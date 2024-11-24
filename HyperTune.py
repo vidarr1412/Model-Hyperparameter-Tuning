@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import joblib
 from sklearn.model_selection import LeaveOneOut, train_test_split
-from sklearn.linear_model import LogisticRegression
+from sklearn.tree import DecisionTreeClassifier  # Import DecisionTreeClassifier
 from sklearn.metrics import accuracy_score, log_loss, classification_report, confusion_matrix, roc_auc_score, roc_curve
 import numpy as np
 import os
@@ -125,14 +125,20 @@ if uploaded_file is not None:
     with st.expander("Tuning Parameters"):
         test_size = st.slider("Test Size (for train-test split)", min_value=0.1, max_value=0.5, value=0.2, step=0.05)
         random_seed = st.slider("Random Seed", min_value=0, max_value=100, value=42, step=1)
-        max_iter = st.slider("Max Iterations (Logistic Regression)", min_value=100, max_value=1000, value=500, step=100)
+        max_depth = st.slider("Max Depth (Decision Tree)", min_value=1, max_value=20, value=5, step=1)
+        min_samples_split = st.slider("Min Samples Split", 2, 10, 2)  # New slider for min_samples_split
+        min_samples_leaf = st.slider("Min Samples Leaf", 1, 10, 1)  # New slider for min_samples_leaf
 
     # Train-test split
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=random_seed)
 
     st.header("Leave-One-Out Cross-Validation (LOOCV)")
-    loocv = LeaveOneOut()
-    model = LogisticRegression(max_iter=max_iter)
+    model = DecisionTreeClassifier(
+        max_depth=max_depth,
+        min_samples_split=min_samples_split,  # Use min_samples_split parameter
+        min_samples_leaf=min_samples_leaf,    # Use min_samples_leaf parameter
+        random_state=random_seed
+    )
 
     # Initialize lists to store results for each iteration
     loocv_accuracies = []
@@ -141,6 +147,7 @@ if uploaded_file is not None:
     loocv_probs = []
 
     # Perform LOOCV
+    loocv = LeaveOneOut()
     for train_index, test_index in loocv.split(X):
         X_train_loocv, X_test_loocv = X.iloc[train_index], X.iloc[test_index]
         y_train_loocv, y_test_loocv = y.iloc[train_index], y.iloc[test_index]
@@ -218,10 +225,11 @@ if uploaded_file is not None:
         # ROC curve
         test_roc_auc = roc_auc_score(y, loocv_probs)
         fpr, tpr, thresholds = roc_curve(y, loocv_probs)
-        plt.figure(figsize=(10, 6))
-        plt.plot(fpr, tpr, color='blue', label='ROC Curve (area = %0.2f)' % test_roc_auc)
-        plt.plot([0, 1], [0, 1], color='red', linestyle='--')  # Diagonal line
-        plt.xlim([0.0, 1.0])
+
+        plt.figure(figsize=(10, 5))
+        plt.plot(fpr, tpr, color='blue', label=f'ROC Curve (AUC = {test_roc_auc:.4f})')
+        plt.plot([0, 1], [0, 1], color='gray', linestyle='--')  # Diagonal line
+        plt.xlim([0.0, 1.05])
         plt.ylim([0.0, 1.05])
         plt.xlabel('False Positive Rate')
         plt.ylabel('True Positive Rate')
@@ -242,6 +250,7 @@ if uploaded_file is not None:
             file_name="roc_curve_plot.png",
             mime="image/png"
         )
+
     model_filename = "decision_tree.joblib"
     joblib.dump(model, model_filename)
 
