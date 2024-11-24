@@ -120,8 +120,10 @@ if uploaded_file is not None:
     # Split features and target variable
     X = dataframe.drop('DEATH_EVENT', axis=1)  # Features
     y = dataframe['DEATH_EVENT']  # Target
-
+    choice = st.selectbox("Select Model Algo", ["Decision Tree", "Logistic Regression","CART"])
     # Tuning Parameters
+    if choice=="Decision Tree":
+        st.title("Decision Tree")
     with st.expander("Tuning Parameters"):
         test_size = st.slider("Test Size (for train-test split)", min_value=0.1, max_value=0.5, value=0.2, step=0.05)
         random_seed = st.slider("Random Seed", min_value=0, max_value=100, value=42, step=1)
