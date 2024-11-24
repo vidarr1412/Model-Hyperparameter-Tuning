@@ -9,6 +9,7 @@ from sklearn.model_selection import LeaveOneOut, train_test_split
 from sklearn.tree import DecisionTreeClassifier  # Import DecisionTreeClassifier
 from sklearn.metrics import accuracy_score, log_loss, classification_report, confusion_matrix, roc_auc_score, roc_curve
 import numpy as np
+from sklearn.naive_bayes import GaussianNB  # Import GaussianNB
 import os
 
 # Add CSS styling
@@ -105,8 +106,10 @@ st.markdown("""
 
 # Title of the application
 st.title("Hyper Tuning ML Algorithm")
-
+choice = st.selectbox("Select Model Algo", ["Decision Tree", "Gusion","CART"])
 # File uploader
+if choice=="Decision Tree":
+        st.title("Decision Tree")
 uploaded_file = st.file_uploader("Upload your dataset (CSV file)", type=["csv"])
 
 if uploaded_file is not None:
@@ -120,10 +123,9 @@ if uploaded_file is not None:
     # Split features and target variable
     X = dataframe.drop('DEATH_EVENT', axis=1)  # Features
     y = dataframe['DEATH_EVENT']  # Target
-    choice = st.selectbox("Select Model Algo", ["Decision Tree", "Logistic Regression","CART"])
+    
     # Tuning Parameters
-    if choice=="Decision Tree":
-        st.title("Decision Tree")
+    
     with st.expander("Tuning Parameters"):
         test_size = st.slider("Test Size (for train-test split)", min_value=0.1, max_value=0.5, value=0.2, step=0.05)
         random_seed = st.slider("Random Seed", min_value=0, max_value=100, value=42, step=1)
@@ -257,6 +259,108 @@ if uploaded_file is not None:
     joblib.dump(model, model_filename)
 
     # Streamlit download button to download the model
+    with open(model_filename, "rb") as f:
+        model_data = f.read()
+
+    st.download_button(
+        label="Download Trained Model",
+        data=model_data,
+        file_name=model_filename,
+        mime="application/octet-stream"
+    )
+elif choice=="Gusion":
+    st.title("Gaussion rapid boots")
+    with st.expander("Tuning Parameters"):
+        test_size = st.slider("Test Size (for train-test split)", min_value=0.1, max_value=0.5, value=0.2, step=0.05)
+        random_seed = st.slider("Random Seed", min_value=0, max_value=100, value=42, step=1)
+        var_smoothing = st.number_input(
+         "Var Smoothing (Log Scale)", min_value=-15, max_value=-1, value=-9, step=1, key="var_smoothing"
+        )
+
+    # Train-test split
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=random_seed)
+    var_smoothing_value = 10 ** var_smoothing
+    st.header("Leave-One-Out Cross-Validation (LOOCV)")
+    model = GaussianNB(var_smoothing=var_smoothing_value)
+    # Initialize lists to store results for each iteration
+    loocv_accuracies = []
+    loocv_log_losses = []
+    loocv_probs = []
+
+    # Perform LOOCV
+    loocv = LeaveOneOut()
+    for train_index, test_index in loocv.split(X):
+        X_train_loocv, X_test_loocv = X.iloc[train_index], X.iloc[test_index]
+        y_train_loocv, y_test_loocv = y.iloc[train_index], y.iloc[test_index]
+
+        # Fit the model
+        model.fit(X_train_loocv, y_train_loocv)
+
+        # Predict
+        y_pred = model.predict(X_test_loocv)
+        y_prob = model.predict_proba(X_test_loocv)[:, 1]
+
+        # Evaluate
+        loocv_accuracies.append(accuracy_score(y_test_loocv, y_pred))
+        loocv_log_losses.append(log_loss([y_test_loocv], [y_prob], labels=[0, 1]))
+        loocv_probs.extend(y_prob)
+
+    # Calculate mean accuracy and log loss
+    mean_accuracy = np.mean(loocv_accuracies)
+    mean_log_loss = np.mean(loocv_log_losses)
+
+    # Visualization
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        st.header("Classification Accuracy")
+        plt.figure(figsize=(10, 5))
+        plt.boxplot(loocv_accuracies)
+        plt.title('LOOCV Accuracy')
+        plt.ylabel('Accuracy')
+        buffer = io.BytesIO()
+        plt.savefig(buffer, format='png')
+        buffer.seek(0)
+        base64_img = base64.b64encode(buffer.read()).decode()
+        st.markdown(f'<div class="zoom-container"><img src="data:image/png;base64,{base64_img}" alt="Accuracy Plot"></div>', unsafe_allow_html=True)
+        st.write(f"Mean Classification Accuracy: {mean_accuracy * 100:.2f}%")
+
+    with col2:
+        st.header("Logarithmic Loss")
+        plt.figure(figsize=(10, 5))
+        plt.boxplot(loocv_log_losses)
+        plt.title('LOOCV Logarithmic Loss')
+        plt.ylabel('Logarithmic Loss')
+        buffer = io.BytesIO()
+        plt.savefig(buffer, format='png')
+        buffer.seek(0)
+        base64_img = base64.b64encode(buffer.read()).decode()
+        st.markdown(f'<div class="zoom-container"><img src="data:image/png;base64,{base64_img}" alt="Log Loss Plot"></div>', unsafe_allow_html=True)
+        st.write(f"Mean Logarithmic Loss: {mean_log_loss:.4f}")
+
+    with col3:
+        st.header("Area Under ROC Curve")
+        roc_auc = roc_auc_score(y, loocv_probs)
+        fpr, tpr, thresholds = roc_curve(y, loocv_probs)
+
+        plt.figure(figsize=(10, 5))
+        plt.plot(fpr, tpr, color='blue', label=f'ROC Curve (AUC = {roc_auc:.4f})')
+        plt.plot([0, 1], [0, 1], color='gray', linestyle='--')
+        plt.xlabel('False Positive Rate')
+        plt.ylabel('True Positive Rate')
+        plt.title('ROC Curve')
+        plt.legend(loc="lower right")
+        buffer = io.BytesIO()
+        plt.savefig(buffer, format='png')
+        buffer.seek(0)
+        base64_img = base64.b64encode(buffer.read()).decode()
+        st.markdown(f'<div class="zoom-container"><img src="data:image/png;base64,{base64_img}" alt="ROC Curve"></div>', unsafe_allow_html=True)
+        st.write(f"Area Under ROC Curve: {roc_auc:.4f}")
+
+    # Save the model
+    model_filename = "gaussian_nb_model.joblib"
+    joblib.dump(model, model_filename)
+
     with open(model_filename, "rb") as f:
         model_data = f.read()
 
